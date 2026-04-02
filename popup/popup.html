@@ -26,6 +26,11 @@
           <span data-i18n="include_existing">纳入已有分组</span>
         </label>
 
+        <label class="field checkbox">
+          <input id="includeWrappedTabsCheckbox" type="checkbox" />
+          <span data-i18n="include_wrapped_tabs">纳入休眠包装页（解包 url）</span>
+        </label>
+
         <label class="field">
           <span data-i18n="mode_label">分组模式</span>
           <select id="groupingModeSelect"></select>
@@ -51,9 +56,6 @@
         <h2 data-i18n="preview_title">预览与编辑</h2>
 
         <div id="groupsEditor" class="groups-editor"></div>
-
-        <h3 data-i18n="tab_assignment_title">标签分配</h3>
-        <div id="tabsEditor" class="tabs-editor"></div>
 
         <label id="crossWindowRow" class="field" hidden>
           <span data-i18n="cross_window_label">跨窗口策略</span>

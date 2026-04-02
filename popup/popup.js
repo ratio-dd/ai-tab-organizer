@@ -4,6 +4,7 @@ const I18N = {
     analysis_title: "分析参数",
     scope_label: "范围",
     include_existing: "纳入已有分组",
+    include_wrapped_tabs: "纳入休眠包装页（解包并按原标签移动）",
     mode_label: "分组模式",
     template_label: "模板",
     prompt_label: "补充提示词",
@@ -38,6 +39,11 @@ const I18N = {
     cross_keep: "不跨窗移动（每窗分别建组）",
     cross_move: "允许跨窗移动（按组归并）",
     ungrouped: "未分组",
+    group_ungrouped_bucket: "未分组池",
+    group_tab_count: "标签数",
+    group_empty_tabs: "暂无标签",
+    move_tab_btn: "移动",
+    move_target_placeholder: "选择目标组",
     no_proposal: "还没有提案。",
     analyzing: "分析中，请稍候...",
     applying: "正在应用分组...",
@@ -79,6 +85,7 @@ const I18N = {
     analysis_title: "Analysis",
     scope_label: "Scope",
     include_existing: "Include existing groups",
+    include_wrapped_tabs: "Include suspended wrapper tabs (unwrap and keep original tab move)",
     mode_label: "Grouping mode",
     template_label: "Template",
     prompt_label: "Extra prompt",
@@ -113,6 +120,11 @@ const I18N = {
     cross_keep: "Do not move across windows",
     cross_move: "Allow moving across windows",
     ungrouped: "Ungrouped",
+    group_ungrouped_bucket: "Ungrouped bucket",
+    group_tab_count: "Tabs",
+    group_empty_tabs: "No tabs",
+    move_tab_btn: "Move",
+    move_target_placeholder: "Select target group",
     no_proposal: "No proposal yet.",
     analyzing: "Analyzing...",
     applying: "Applying groups...",
@@ -175,6 +187,7 @@ const el = {
   status: document.getElementById("status"),
   scopeSelect: document.getElementById("scopeSelect"),
   includeExistingCheckbox: document.getElementById("includeExistingCheckbox"),
+  includeWrappedTabsCheckbox: document.getElementById("includeWrappedTabsCheckbox"),
   groupingModeSelect: document.getElementById("groupingModeSelect"),
   templateSelect: document.getElementById("templateSelect"),
   userPromptInput: document.getElementById("userPromptInput"),
@@ -182,7 +195,6 @@ const el = {
   undoBtn: document.getElementById("undoBtn"),
   previewSection: document.getElementById("previewSection"),
   groupsEditor: document.getElementById("groupsEditor"),
-  tabsEditor: document.getElementById("tabsEditor"),
   crossWindowRow: document.getElementById("crossWindowRow"),
   crossWindowSelect: document.getElementById("crossWindowSelect"),
   applyBtn: document.getElementById("applyBtn"),
@@ -265,6 +277,7 @@ async function onAnalyze() {
     const options = {
       scope: el.scopeSelect.value,
       includeExistingGroups: el.includeExistingCheckbox.checked,
+      includeSuspendedWrappedTabs: el.includeWrappedTabsCheckbox.checked,
       groupingMode: el.groupingModeSelect.value,
       userPrompt: el.userPromptInput.value.trim(),
       templateId: el.templateSelect.value || ""
@@ -476,7 +489,6 @@ function renderProposal() {
 
   renderCrossWindowStrategyVisibility();
   renderGroupsEditor();
-  renderTabsEditor();
 }
 
 function renderCrossWindowStrategyVisibility() {
@@ -490,36 +502,65 @@ function renderGroupsEditor() {
     return;
   }
 
-  const items = state.draftGroups
+  const { grouped, ungroupedTabs } = buildGroupBuckets();
+
+  const groupedItems = grouped
     .map((group, index) => {
       const colorOptions = COLOR_OPTIONS.map((color) => {
         const selected = group.color === color ? "selected" : "";
         return `<option value="${color}" ${selected}>${color}</option>`;
       }).join("");
 
+      const tabsMarkup =
+        group.tabs.length > 0
+          ? group.tabs.map((tab) => renderGroupTabRow(tab, group.id)).join("")
+          : `<div class="empty">${escapeHtml(t("group_empty_tabs"))}</div>`;
+
       return `
         <div class="group-item" data-group-id="${group.id}">
-          <label class="field">
-            <span>#${index + 1}</span>
-            <input class="group-name-input" data-group-id="${group.id}" maxlength="48" value="${escapeHtml(
-              group.name
-            )}" />
-          </label>
-          <label class="field">
-            <span>Color</span>
-            <select class="group-color-select" data-group-id="${group.id}">
-              ${colorOptions}
-            </select>
-          </label>
-          <div class="group-meta">${escapeHtml(group.reason || "")}, confidence: ${Number(
-            group.confidence || 0
-          ).toFixed(2)}</div>
+          <div class="group-header">
+            <label class="field">
+              <span>#${index + 1}</span>
+              <input class="group-name-input" data-group-id="${group.id}" maxlength="48" value="${escapeHtml(
+                group.name
+              )}" />
+            </label>
+            <label class="field">
+              <span>Color</span>
+              <select class="group-color-select" data-group-id="${group.id}">
+                ${colorOptions}
+              </select>
+            </label>
+          </div>
+          <div class="group-meta">
+            ${escapeHtml(t("group_tab_count"))}: ${group.tabs.length} · ${escapeHtml(
+              group.reason || ""
+            )}, confidence: ${Number(group.confidence || 0).toFixed(2)}
+          </div>
+          <div class="group-tabs-list">${tabsMarkup}</div>
         </div>
       `;
     })
     .join("");
 
-  el.groupsEditor.innerHTML = items;
+  const ungroupedMarkup =
+    ungroupedTabs.length > 0
+      ? ungroupedTabs.map((tab) => renderGroupTabRow(tab, "ungrouped")).join("")
+      : `<div class="empty">${escapeHtml(t("group_empty_tabs"))}</div>`;
+
+  const ungroupedCard = `
+    <div class="group-item group-item-ungrouped" data-group-id="ungrouped">
+      <div class="group-header">
+        <div class="field">
+          <span>${escapeHtml(t("group_ungrouped_bucket"))}</span>
+        </div>
+      </div>
+      <div class="group-meta">${escapeHtml(t("group_tab_count"))}: ${ungroupedTabs.length}</div>
+      <div class="group-tabs-list">${ungroupedMarkup}</div>
+    </div>
+  `;
+
+  el.groupsEditor.innerHTML = `${groupedItems}${ungroupedCard}`;
 
   el.groupsEditor.querySelectorAll(".group-name-input").forEach((input) => {
     input.addEventListener("input", (event) => {
@@ -529,7 +570,6 @@ function renderGroupsEditor() {
         return;
       }
       group.name = String(event.target.value || "").slice(0, 48);
-      renderTabsEditor();
     });
   });
 
@@ -543,49 +583,108 @@ function renderGroupsEditor() {
       group.color = event.target.value;
     });
   });
-}
 
-function renderTabsEditor() {
-  if (!state.proposal || !Array.isArray(state.proposal.candidates)) {
-    el.tabsEditor.innerHTML = "";
-    return;
-  }
-
-  const rows = state.proposal.candidates
-    .map((tab) => {
-      const assignment = state.tabAssignments.get(tab.tabId) || "ungrouped";
-      const groupOptions = state.draftGroups
-        .map((group) => {
-          const selected = assignment === group.id ? "selected" : "";
-          return `<option value="${group.id}" ${selected}>${escapeHtml(group.name)}</option>`;
-        })
-        .join("");
-
-      const ungroupSelected = assignment === "ungrouped" ? "selected" : "";
-
-      return `
-        <div class="tab-row" data-tab-id="${tab.tabId}">
-          <div>
-            <div class="tab-title">${escapeHtml(tab.title || "(Untitled)")}</div>
-            <div class="tab-sub">${escapeHtml(tab.domain || "unknown")} · #${tab.tabId}</div>
-          </div>
-          <select class="tab-assignment" data-tab-id="${tab.tabId}">
-            ${groupOptions}
-            <option value="ungrouped" ${ungroupSelected}>${escapeHtml(t("ungrouped"))}</option>
-          </select>
-        </div>
-      `;
-    })
-    .join("");
-
-  el.tabsEditor.innerHTML = rows;
-
-  el.tabsEditor.querySelectorAll(".tab-assignment").forEach((select) => {
-    select.addEventListener("change", (event) => {
-      const tabId = Number(event.target.dataset.tabId);
-      state.tabAssignments.set(tabId, event.target.value);
+  el.groupsEditor.querySelectorAll(".tab-move-toggle").forEach((button) => {
+    button.addEventListener("click", (event) => {
+      const tabId = Number(event.currentTarget.dataset.tabId);
+      if (!Number.isInteger(tabId)) {
+        return;
+      }
+      const select = el.groupsEditor.querySelector(`.tab-move-select[data-tab-id="${tabId}"]`);
+      if (!select) {
+        return;
+      }
+      select.hidden = !select.hidden;
+      if (!select.hidden) {
+        select.focus();
+      }
     });
   });
+
+  el.groupsEditor.querySelectorAll(".tab-move-select").forEach((select) => {
+    select.addEventListener("change", (event) => {
+      const tabId = Number(event.target.dataset.tabId);
+      const assignment = String(event.target.value || "");
+      if (!Number.isInteger(tabId) || !assignment) {
+        return;
+      }
+      state.tabAssignments.set(tabId, assignment);
+      renderGroupsEditor();
+    });
+  });
+}
+
+function buildGroupBuckets() {
+  const grouped = state.draftGroups.map((group) => ({
+    ...group,
+    tabs: []
+  }));
+  const groupedById = new Map(grouped.map((group) => [group.id, group]));
+  const ungroupedTabs = [];
+
+  for (const tab of state.proposal.candidates || []) {
+    const assignment = state.tabAssignments.get(tab.tabId) || "ungrouped";
+    const bucket = groupedById.get(assignment);
+    if (bucket) {
+      bucket.tabs.push(tab);
+      continue;
+    }
+    ungroupedTabs.push(tab);
+  }
+
+  return { grouped, ungroupedTabs };
+}
+
+function renderGroupTabRow(tab, currentAssignment) {
+  const options = buildMoveTargetOptions(currentAssignment);
+  const disabled = options.length === 0 ? "disabled" : "";
+  const optionsMarkup = options
+    .map(
+      (item) =>
+        `<option value="${escapeHtml(item.value)}">${escapeHtml(item.label)}</option>`
+    )
+    .join("");
+
+  return `
+    <div class="group-tab-row" data-tab-id="${tab.tabId}">
+      <div>
+        <div class="tab-title">${escapeHtml(tab.title || "(Untitled)")}</div>
+        <div class="tab-sub">${escapeHtml(tab.domain || "unknown")} · #${tab.tabId}</div>
+      </div>
+      <div class="group-tab-actions">
+        <button type="button" class="tab-move-toggle" data-tab-id="${tab.tabId}" ${disabled}>
+          ${escapeHtml(t("move_tab_btn"))}
+        </button>
+        <select class="tab-move-select" data-tab-id="${tab.tabId}" hidden>
+          <option value="" selected>${escapeHtml(t("move_target_placeholder"))}</option>
+          ${optionsMarkup}
+        </select>
+      </div>
+    </div>
+  `;
+}
+
+function buildMoveTargetOptions(currentAssignment) {
+  const options = [];
+
+  for (const group of state.draftGroups) {
+    if (group.id === currentAssignment) {
+      continue;
+    }
+    options.push({
+      value: group.id,
+      label: group.name
+    });
+  }
+
+  if (currentAssignment !== "ungrouped") {
+    options.push({
+      value: "ungrouped",
+      label: t("group_ungrouped_bucket")
+    });
+  }
+
+  return options;
 }
 
 function buildEditedGroups() {
@@ -643,6 +742,7 @@ function syncControlsWithDefaults() {
   el.includeExistingCheckbox.checked = Boolean(
     state.settings.includeExistingGroupsDefault
   );
+  el.includeWrappedTabsCheckbox.checked = false;
   renderCrossWindowStrategyVisibility();
 }
 

@@ -176,29 +176,37 @@ button:disabled {
   background: #fafcff;
 }
 
+.group-header {
+  display: grid;
+  grid-template-columns: 1fr 120px;
+  gap: 8px;
+}
+
 .group-meta {
   font-size: 12px;
   color: var(--muted);
   margin-top: 4px;
 }
 
-.tabs-editor {
+.group-tabs-list {
+  margin-top: 8px;
   border: 1px solid var(--border);
   border-radius: 8px;
-  max-height: 240px;
+  max-height: 260px;
   overflow: auto;
+  background: #fff;
 }
 
-.tab-row {
+.group-tab-row {
   display: grid;
-  grid-template-columns: 1fr 120px;
+  grid-template-columns: 1fr auto;
   gap: 8px;
   align-items: center;
   padding: 8px;
   border-bottom: 1px solid #edf1f5;
 }
 
-.tab-row:last-child {
+.group-tab-row:last-child {
   border-bottom: 0;
 }
 
@@ -210,6 +218,20 @@ button:disabled {
 .tab-sub {
   font-size: 11px;
   color: var(--muted);
+}
+
+.group-tab-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.tab-move-toggle {
+  min-width: 52px;
+}
+
+.tab-move-select {
+  min-width: 150px;
 }
 
 .stats-panel {

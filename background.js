@@ -17,6 +17,10 @@ const LEGACY_PROVIDER_KEYS = [
 const MIN_TIMEOUT_MS = 2000;
 const DEFAULT_TIMEOUT_MS = 15000;
 const MAX_TIMEOUT_MS = 60000;
+const MODEL_TAB_TITLE_MAX = 120;
+const MODEL_TAB_URL_MAX = 480;
+const MODEL_QUERY_KEYS_MAX = 8;
+const MODEL_PAYLOAD_CHAR_BUDGET = 24000;
 const FALLBACK_COLOR_SEQUENCE = [
   "blue",
   "green",
@@ -357,11 +361,14 @@ async function collectCandidateTabs(options) {
 
   const candidates = [];
   for (const tab of tabs) {
-    if (shouldSkipTab(tab, includeExistingGroups)) {
+    const url = resolveTabUrlForAnalysis(
+      tab.url || tab.pendingUrl || "",
+      Boolean(options.includeSuspendedWrappedTabs)
+    );
+    if (shouldSkipTab(tab, includeExistingGroups, url)) {
       continue;
     }
 
-    const url = tab.url || tab.pendingUrl || "";
     const domain = extractDomain(url);
     candidates.push({
       tabId: tab.id,
@@ -386,7 +393,7 @@ async function collectCandidateTabs(options) {
   return candidates;
 }
 
-function shouldSkipTab(tab, includeExistingGroups) {
+function shouldSkipTab(tab, includeExistingGroups, resolvedUrl) {
   if (!tab || typeof tab.id !== "number") {
     return true;
   }
@@ -395,7 +402,7 @@ function shouldSkipTab(tab, includeExistingGroups) {
     return true;
   }
 
-  const url = tab.url || tab.pendingUrl || "";
+  const url = String(resolvedUrl || tab.url || tab.pendingUrl || "").trim();
   if (!url || isRestrictedUrl(url)) {
     return true;
   }
@@ -405,6 +412,61 @@ function shouldSkipTab(tab, includeExistingGroups) {
   }
 
   return false;
+}
+
+function resolveTabUrlForAnalysis(rawUrl, allowUnwrapWrappedTab) {
+  const raw = String(rawUrl || "").trim();
+  if (!raw) {
+    return "";
+  }
+
+  if (!allowUnwrapWrappedTab) {
+    return raw;
+  }
+
+  const unwrapped = unwrapEmbeddedTargetUrl(raw);
+  return unwrapped || raw;
+}
+
+function unwrapEmbeddedTargetUrl(rawUrl) {
+  try {
+    const parsed = new URL(rawUrl);
+    if (parsed.protocol !== "chrome-extension:") {
+      return "";
+    }
+
+    const nestedRaw =
+      parsed.searchParams.get("url") ||
+      parsed.searchParams.get("target") ||
+      parsed.searchParams.get("link");
+    if (!nestedRaw) {
+      return "";
+    }
+
+    const decoded = decodeNestedUrl(nestedRaw);
+    if (/^https?:\/\//i.test(decoded)) {
+      return decoded;
+    }
+    return "";
+  } catch (_error) {
+    return "";
+  }
+}
+
+function decodeNestedUrl(value) {
+  let text = String(value || "").trim();
+  for (let index = 0; index < 2; index += 1) {
+    try {
+      const decoded = decodeURIComponent(text);
+      if (decoded === text) {
+        break;
+      }
+      text = decoded;
+    } catch (_error) {
+      break;
+    }
+  }
+  return text;
 }
 
 function isRestrictedUrl(url) {
@@ -431,7 +493,7 @@ function extractDomain(url) {
 
 function buildModelPromptPayload(candidates, options, settings) {
   const sanitizedCandidates = candidates.map((candidate) =>
-    applyPrivacyMode(candidate, settings.privacyMode)
+    sanitizeCandidateForModel(candidate, settings.privacyMode)
   );
 
   const templateText = findTemplatePrompt(settings.promptTemplates, options.templateId);
@@ -464,6 +526,50 @@ function buildModelPromptPayload(candidates, options, settings) {
 }
 
 async function requestGroupingFromMiniMax(candidates, options, settings) {
+  const chunks = splitCandidatesForModel(candidates, options, settings);
+  if (chunks.length > 1) {
+    const merged = await requestGroupingFromMiniMaxByChunks(chunks, options, settings);
+    return merged;
+  }
+
+  return requestGroupingFromMiniMaxSingle(chunks[0] || candidates, options, settings);
+}
+
+async function requestGroupingFromMiniMaxByChunks(chunks, options, settings) {
+  const mergedGroups = [];
+  const mergedUngrouped = [];
+
+  for (let index = 0; index < chunks.length; index += 1) {
+    const chunkCandidates = chunks[index];
+    const chunkResult = await requestGroupingFromMiniMaxSingle(
+      chunkCandidates,
+      options,
+      settings
+    );
+    const chunkProposal = buildGroupingProposal(chunkResult, chunkCandidates, options);
+
+    for (const group of chunkProposal.groups) {
+      mergedGroups.push({
+        name: group.name,
+        color: group.color,
+        tabIds: group.tabIds,
+        reason: group.reason,
+        confidence: group.confidence
+      });
+    }
+
+    if (Array.isArray(chunkProposal.ungrouped)) {
+      mergedUngrouped.push(...chunkProposal.ungrouped);
+    }
+  }
+
+  return {
+    groups: mergeChunkGroupsByName(mergedGroups),
+    ungrouped: [...new Set(mergedUngrouped.filter((id) => Number.isInteger(Number(id))))]
+  };
+}
+
+async function requestGroupingFromMiniMaxSingle(candidates, options, settings) {
   const apiKey = normalizeApiToken(settings.minimaxApiKey);
   if (!apiKey) {
     throw new AppError("AI_NETWORK_ERROR", "请先在设置中填写 MiniMax Token Plan Key。");
@@ -527,6 +633,79 @@ async function requestGroupingFromMiniMax(candidates, options, settings) {
   }
 
   return parsed;
+}
+
+function splitCandidatesForModel(candidates, options, settings) {
+  const chunks = [];
+  let current = [];
+
+  for (const candidate of candidates) {
+    current.push(candidate);
+
+    const currentPayloadSize = estimateModelPayloadSize(current, options, settings);
+    if (currentPayloadSize <= MODEL_PAYLOAD_CHAR_BUDGET) {
+      continue;
+    }
+
+    const overflow = current.pop();
+    if (current.length === 0) {
+      current.push(overflow);
+      chunks.push(current);
+      current = [];
+    } else {
+      chunks.push(current);
+      current = [overflow];
+    }
+  }
+
+  if (current.length > 0) {
+    chunks.push(current);
+  }
+
+  return chunks.length > 0 ? chunks : [candidates];
+}
+
+function estimateModelPayloadSize(candidates, options, settings) {
+  const { payload } = buildModelPromptPayload(candidates, options, settings);
+  return JSON.stringify(payload).length;
+}
+
+function mergeChunkGroupsByName(groups) {
+  const merged = new Map();
+
+  for (const group of groups) {
+    const key = String(group?.name || "")
+      .trim()
+      .toLowerCase()
+      .slice(0, 48);
+    const safeKey = key || "__fallback__";
+    const existing = merged.get(safeKey);
+
+    if (!existing) {
+      merged.set(safeKey, {
+        name: normalizeName(group?.name, "分组"),
+        color: normalizeColor(group?.color),
+        tabIds: [...new Set((group?.tabIds || []).filter((id) => Number.isInteger(Number(id))))],
+        reason: normalizeReason(group?.reason),
+        confidence: normalizeConfidence(group?.confidence)
+      });
+      continue;
+    }
+
+    const mergedIds = new Set(existing.tabIds);
+    for (const id of group?.tabIds || []) {
+      const numeric = Number(id);
+      if (Number.isInteger(numeric)) {
+        mergedIds.add(numeric);
+      }
+    }
+    existing.tabIds = [...mergedIds];
+    existing.confidence = normalizeConfidence(
+      (Number(existing.confidence) + Number(group?.confidence || 0.5)) / 2
+    );
+  }
+
+  return [...merged.values()].filter((group) => group.tabIds.length > 0);
 }
 
 async function getTokenPlanRemains(forceRefresh = false) {
@@ -1146,6 +1325,42 @@ function applyPrivacyMode(candidate, privacyMode) {
   };
 }
 
+function sanitizeCandidateForModel(candidate, privacyMode) {
+  const base = applyPrivacyMode(candidate, privacyMode);
+  return {
+    ...base,
+    title: normalizeTitleForModel(base.title),
+    url: normalizeUrlForModel(base.url),
+    domain: String(base.domain || "unknown").slice(0, 120)
+  };
+}
+
+function normalizeTitleForModel(raw) {
+  return String(raw || "").slice(0, MODEL_TAB_TITLE_MAX);
+}
+
+function normalizeUrlForModel(rawUrl) {
+  const text = String(rawUrl || "").trim();
+  if (!text) {
+    return "";
+  }
+
+  if (text.length <= MODEL_TAB_URL_MAX) {
+    return text;
+  }
+
+  try {
+    const parsed = new URL(text);
+    const queryKeys = [...new Set([...parsed.searchParams.keys()])].slice(0, MODEL_QUERY_KEYS_MAX);
+    const pathSegments = parsed.pathname.split("/").filter(Boolean).slice(0, 2);
+    const compactPath = pathSegments.length > 0 ? `/${pathSegments.join("/")}` : "/";
+    const compactQuery = queryKeys.length > 0 ? `?${queryKeys.join("&")}` : "";
+    return `${parsed.origin}${compactPath}${compactQuery}`.slice(0, MODEL_TAB_URL_MAX);
+  } catch (_error) {
+    return text.slice(0, MODEL_TAB_URL_MAX);
+  }
+}
+
 function redactUrl(url) {
   try {
     const parsed = new URL(url);
@@ -1181,6 +1396,7 @@ function normalizeRunOptions(options, settings) {
       typeof options.includeExistingGroups === "boolean"
         ? options.includeExistingGroups
         : Boolean(settings.includeExistingGroupsDefault),
+    includeSuspendedWrappedTabs: Boolean(options.includeSuspendedWrappedTabs),
     groupingMode,
     userPrompt: String(options.userPrompt || "").slice(0, 300),
     templateId: options.templateId ? String(options.templateId) : ""
