@@ -1,4 +1,4 @@
-# Chrome AI 标签整理器 - 技术方案（MiniMax Token Plan MVP）
+# Chrome AI 标签整理器 - 技术方案（MiniMax Token Plan v0.2.0）
 
 ## 1. 架构概览
 - 平台：Chrome Extension Manifest V3。
@@ -44,6 +44,7 @@ export interface RunOptions {
   scope: Scope;
   crossWindowMove?: boolean;
   includeExistingGroups: boolean;
+  includeSuspendedWrappedTabs?: boolean;
   groupingMode: GroupingMode;
   userPrompt?: string;
   templateId?: string;
@@ -101,6 +102,12 @@ type Request =
   | { type: "getTokenPlanRemains"; forceRefresh?: boolean };
 ```
 
+Popup 预览交互（v0.2.0）：
+- 改为“按组卡片”展示，每组内部直接展示 tab 列表；
+- 每条 tab 提供 `Move` 按钮，点击后弹出目标组下拉；
+- 组外额外渲染“未分组池”卡片；
+- 最终执行仍由 `tabAssignments` 统一汇总为 `edits` 发送给后台。
+
 错误码映射重点：
 - `AI_TIMEOUT`
 - `AI_INVALID_RESPONSE`
@@ -126,12 +133,28 @@ MiniMax HTTP 错误语义：
 - 请求体：
   - `messages[system]`：仅输出 JSON 的约束
   - `messages[user]`：运行参数 + tabs 列表（JSON 字符串）
+- 输入规整（防上下文超限）：
+  - 标题长度裁剪（`MODEL_TAB_TITLE_MAX=120`）
+  - URL 长度裁剪（`MODEL_TAB_URL_MAX=480`）
+  - 超长 query 仅保留有限 key（`MODEL_QUERY_KEYS_MAX=8`）
+- payload 预算（`MODEL_PAYLOAD_CHAR_BUDGET=24000`）：
+  - 单次估算超预算时，自动按候选 tab 分块调用；
+  - 分块结果按组名归并并去重 tabId。
 
 ### 4.2 额度查询
 - Endpoint：`GET https://www.minimaxi.com/v1/api/openplatform/coding_plan/remains`
 - 触发方式：设置页手动刷新；
 - 缓存策略：本地缓存 `2 分钟`，`forceRefresh=true` 时绕过缓存；
 - 存储键：`tokenPlanRemainsCache`。
+
+### 4.3 休眠包装页 URL 解包
+- 输入来源可能是 `chrome-extension://.../park.html?...&url=<encoded-target>`。
+- 默认行为：按受限页面跳过。
+- 用户勾选 `includeSuspendedWrappedTabs=true` 时：
+  - 仅在分析阶段尝试从 `url/target/link` 参数解包原始目标 URL；
+  - 支持最多两轮 `decodeURIComponent`；
+  - 仅接受 `http/https` 目标。
+- 执行阶段不重新打开 URL，仍基于原 tabId 做 `tabs.move / tabs.group`，避免激活休眠页。
 
 ## 5. 设置迁移策略
 - 启动读取设置时执行迁移：
@@ -147,6 +170,7 @@ MiniMax HTTP 错误语义：
 3. 先解除目标标签已有分组。
 4. 按分组结果创建标签组并更新组名/颜色。
 5. 若允许跨窗移动，则先 `tabs.move` 到目标窗口再分组。
+6. 即使分析时发生包装页解包，执行仍对原 tabId 操作，不新建标签。
 
 ### 6.2 回滚
 1. 读取 `checkpoint:last`。
@@ -179,3 +203,9 @@ MiniMax HTTP 错误语义：
 - MiniMax-only 模式下完成主流程闭环。
 - 额度查询成功/失败场景。
 - 80 标签场景性能目标不回退。
+- 包装页开关回归：
+  - 关闭开关时包装页不参与分析；
+  - 打开开关时可识别包装页内原始 URL 且执行不激活新标签。
+- 预览交互回归：
+  - 组卡片内 `Move` 调组后，组内 tab 分布即时刷新；
+  - `analyze/apply/undo` smoke 全通过。
