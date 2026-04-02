@@ -17,6 +17,17 @@ const LEGACY_PROVIDER_KEYS = [
 const MIN_TIMEOUT_MS = 2000;
 const DEFAULT_TIMEOUT_MS = 15000;
 const MAX_TIMEOUT_MS = 60000;
+const FALLBACK_COLOR_SEQUENCE = [
+  "blue",
+  "green",
+  "orange",
+  "purple",
+  "cyan",
+  "red",
+  "yellow",
+  "pink",
+  "grey"
+];
 
 const ALLOWED_COLORS = new Set([
   "grey",
@@ -426,8 +437,13 @@ function buildModelPromptPayload(candidates, options, settings) {
   const templateText = findTemplatePrompt(settings.promptTemplates, options.templateId);
   const userPrompt = [templateText, options.userPrompt || ""].filter(Boolean).join("\n");
 
-  const systemPrompt =
-    "你是标签页整理助手。目标是帮助用户更快找回标签。只输出 JSON，不要输出任何解释性文字。";
+  const systemPrompt = [
+    "你是标签页整理助手，目标是帮助用户更快找回标签。",
+    "必须只输出 JSON 对象，不允许输出任何解释性文字。",
+    "输出格式必须是 {\"groups\":[...],\"ungrouped\":[...]}。",
+    "groups[].tabIds 必须严格使用输入 tabs 中已有的 tabId，禁止使用索引、标题、URL 代替。",
+    "每个 tabId 只能出现一次，不确定时请放入 ungrouped。"
+  ].join("\n");
 
   const payload = {
     goal: "group_tabs_for_fast_retrieval",
@@ -466,7 +482,8 @@ async function requestGroupingFromMiniMax(candidates, options, settings) {
       },
       body: JSON.stringify({
         model: settings.minimaxModel || "MiniMax-M2.7",
-        temperature: 0.7,
+        temperature: 0.2,
+        top_p: 0.3,
         messages: [
           { role: "system", content: systemPrompt },
           { role: "user", content: JSON.stringify(payload) }
@@ -500,10 +517,13 @@ async function requestGroupingFromMiniMax(candidates, options, settings) {
   }
 
   const result = await response.json();
-  const parsed = parseModelJson(extractContentFromCompletion(result));
+  const parsed =
+    parseModelJson(extractContentFromCompletion(result)) ||
+    extractStructuredObjectFromCompletion(result);
 
   if (!parsed || typeof parsed !== "object") {
-    throw new AppError("AI_INVALID_RESPONSE", "MiniMax 返回格式无效，请重试。");
+    const keyHint = isPlainObject(result) ? Object.keys(result).slice(0, 6).join(",") : "unknown";
+    throw new AppError("AI_INVALID_RESPONSE", `MiniMax 返回格式无效，请重试。返回字段: ${keyHint}`);
   }
 
   return parsed;
@@ -623,6 +643,13 @@ function parseModelJson(content) {
     return safeJsonParse(normalizeModelJsonText(content));
   }
 
+  if (isPlainObject(content)) {
+    if (typeof content.text === "string") {
+      return safeJsonParse(normalizeModelJsonText(content.text));
+    }
+    return content;
+  }
+
   if (Array.isArray(content)) {
     const text = content
       .map((part) => {
@@ -639,8 +666,24 @@ function parseModelJson(content) {
     return safeJsonParse(normalizeModelJsonText(text));
   }
 
-  if (content && typeof content.text === "string") {
-    return safeJsonParse(normalizeModelJsonText(content.text));
+  return null;
+}
+
+function extractStructuredObjectFromCompletion(result) {
+  const message = result?.choices?.[0]?.message;
+  const candidates = [
+    message?.parsed,
+    message?.json,
+    isPlainObject(message?.content) ? message.content : null,
+    isPlainObject(result?.data) ? result.data : null,
+    isPlainObject(result?.result) ? result.result : null,
+    isPlainObject(result?.output) ? result.output : null
+  ];
+
+  for (const candidate of candidates) {
+    if (isPlainObject(candidate)) {
+      return candidate;
+    }
   }
 
   return null;
@@ -676,12 +719,13 @@ function buildGroupingProposal(aiResult, candidates, options) {
   const candidateIdSet = new Set(candidates.map((tab) => tab.tabId));
   const usedTabIds = new Set();
 
-  const groups = Array.isArray(aiResult.groups) ? aiResult.groups : [];
+  const adapted = adaptAiResult(aiResult);
+  const groups = adapted.groups;
   const normalizedGroups = [];
 
   for (let index = 0; index < groups.length; index += 1) {
     const group = groups[index];
-    const rawTabIds = Array.isArray(group?.tabIds) ? group.tabIds : [];
+    const rawTabIds = extractTabIdsFromGroup(group);
 
     const tabIds = [];
     for (const id of rawTabIds) {
@@ -702,20 +746,42 @@ function buildGroupingProposal(aiResult, candidates, options) {
 
     normalizedGroups.push({
       id: `group-${index + 1}`,
-      name: normalizeName(group?.name, `分组 ${index + 1}`),
+      name: normalizeName(
+        group?.name || group?.title || group?.label || group?.topic,
+        `分组 ${index + 1}`
+      ),
       color: normalizeColor(group?.color),
       tabIds,
-      reason: normalizeReason(group?.reason),
+      reason: normalizeReason(group?.reason || group?.rationale || group?.summary),
       confidence: normalizeConfidence(group?.confidence)
     });
   }
 
   if (normalizedGroups.length === 0) {
-    throw new AppError("AI_INVALID_RESPONSE", "AI 未生成有效分组，请调整提示词后重试。");
+    const fallback = buildDomainFallbackGroups(candidates);
+    if (fallback.groups.length > 0) {
+      return {
+        planId: generateId(),
+        runId: generateId(),
+        generatedAt: Date.now(),
+        optionsSnapshot: options,
+        groups: fallback.groups,
+        ungrouped: fallback.ungrouped,
+        candidates
+      };
+    }
+
+    const keyHint = isPlainObject(aiResult)
+      ? Object.keys(aiResult).slice(0, 6).join(",")
+      : "unknown";
+    throw new AppError(
+      "AI_INVALID_RESPONSE",
+      `AI 未生成有效分组，请重试。返回字段提示: ${keyHint || "none"}`
+    );
   }
 
   const ungrouped = [];
-  const rawUngrouped = Array.isArray(aiResult.ungrouped) ? aiResult.ungrouped : [];
+  const rawUngrouped = adapted.ungrouped;
   for (const id of rawUngrouped) {
     const numericId = Number(id);
     if (!Number.isInteger(numericId)) {
@@ -743,6 +809,169 @@ function buildGroupingProposal(aiResult, candidates, options) {
     ungrouped,
     candidates
   };
+}
+
+function adaptAiResult(aiResult) {
+  const roots = collectResultRoots(aiResult);
+
+  let groups = [];
+  let ungrouped = [];
+
+  for (const root of roots) {
+    const candidate = pickFirstArray(root, [
+      "groups",
+      "groupings",
+      "clusters",
+      "categories",
+      "sections",
+      "plans"
+    ]);
+    if (candidate.length > 0) {
+      groups = candidate;
+      break;
+    }
+  }
+
+  for (const root of roots) {
+    const candidate = pickFirstArray(root, [
+      "ungrouped",
+      "unassigned",
+      "others",
+      "rest",
+      "leftovers"
+    ]);
+    if (candidate.length > 0) {
+      ungrouped = candidate;
+      break;
+    }
+  }
+
+  return { groups, ungrouped };
+}
+
+function collectResultRoots(aiResult) {
+  const list = [];
+  if (isPlainObject(aiResult)) {
+    list.push(aiResult);
+    for (const key of ["data", "result", "output", "payload", "plan"]) {
+      if (isPlainObject(aiResult[key])) {
+        list.push(aiResult[key]);
+      }
+    }
+  }
+  return list;
+}
+
+function pickFirstArray(source, keys) {
+  if (!isPlainObject(source)) {
+    return [];
+  }
+  for (const key of keys) {
+    const value = source[key];
+    if (Array.isArray(value)) {
+      return value;
+    }
+  }
+  return [];
+}
+
+function extractTabIdsFromGroup(group) {
+  if (!isPlainObject(group)) {
+    return [];
+  }
+
+  const rawList =
+    group.tabIds ||
+    group.tab_ids ||
+    group.tabs ||
+    group.items ||
+    group.members ||
+    group.tabList;
+
+  if (!Array.isArray(rawList)) {
+    return [];
+  }
+
+  const ids = [];
+  for (const item of rawList) {
+    if (Number.isInteger(Number(item))) {
+      ids.push(Number(item));
+      continue;
+    }
+
+    if (isPlainObject(item)) {
+      const rawId = item.tabId ?? item.tab_id ?? item.id ?? item.tab;
+      if (Number.isInteger(Number(rawId))) {
+        ids.push(Number(rawId));
+      }
+    }
+  }
+
+  return ids;
+}
+
+function buildDomainFallbackGroups(candidates) {
+  const byDomain = new Map();
+  for (const tab of candidates) {
+    const domain = String(tab.domain || "unknown").trim() || "unknown";
+    const list = byDomain.get(domain) || [];
+    list.push(tab);
+    byDomain.set(domain, list);
+  }
+
+  const entries = [...byDomain.entries()].sort((a, b) => b[1].length - a[1].length);
+  const groups = [];
+  const ungrouped = [];
+
+  for (const [domain, tabs] of entries) {
+    if (tabs.length <= 1) {
+      for (const tab of tabs) {
+        ungrouped.push(tab.tabId);
+      }
+      continue;
+    }
+
+    groups.push({
+      id: `fallback-${groups.length + 1}`,
+      name: normalizeName(domain, `分组 ${groups.length + 1}`),
+      color: FALLBACK_COLOR_SEQUENCE[groups.length % FALLBACK_COLOR_SEQUENCE.length],
+      tabIds: tabs.map((tab) => tab.tabId),
+      reason: "AI 输出格式不稳定，按域名回退分组。",
+      confidence: 0.35
+    });
+  }
+
+  if (groups.length === 0 && candidates.length > 0) {
+    return {
+      groups: [
+        {
+          id: "fallback-1",
+          name: "临时分组",
+          color: FALLBACK_COLOR_SEQUENCE[0],
+          tabIds: candidates.map((tab) => tab.tabId),
+          reason: "AI 输出格式不稳定，临时将标签归为一组。",
+          confidence: 0.2
+        }
+      ],
+      ungrouped: []
+    };
+  }
+
+  if (groups.length > 8) {
+    const keep = groups.slice(0, 7);
+    const tailTabIds = groups.slice(7).flatMap((group) => group.tabIds);
+    keep.push({
+      id: "fallback-others",
+      name: "其他站点",
+      color: "grey",
+      tabIds: tailTabIds,
+      reason: "分组过多，已合并尾部分组。",
+      confidence: 0.3
+    });
+    return { groups: keep, ungrouped };
+  }
+
+  return { groups, ungrouped };
 }
 
 async function persistProposal(proposal) {
@@ -1202,7 +1431,12 @@ function resolveBaseTimeoutMs(settings) {
   if (!Number.isFinite(value)) {
     return DEFAULT_TIMEOUT_MS;
   }
-  return Math.min(MAX_TIMEOUT_MS, Math.max(MIN_TIMEOUT_MS, Math.round(value)));
+  const normalized = Math.min(MAX_TIMEOUT_MS, Math.max(MIN_TIMEOUT_MS, Math.round(value)));
+  // Backward compatibility: previous versions defaulted to 8000ms.
+  if (normalized === 8000) {
+    return DEFAULT_TIMEOUT_MS;
+  }
+  return normalized;
 }
 
 function getAnalyzeTimeoutMs(settings, candidateCount) {
