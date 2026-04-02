@@ -1,0 +1,138 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>AI Tab Organizer</title>
+    <link rel="stylesheet" href="popup.css" />
+  </head>
+  <body>
+    <main class="app">
+      <header class="app-header">
+        <h1 data-i18n="app_title">AI 标签整理器</h1>
+        <p id="status" class="status" data-type="info"></p>
+      </header>
+
+      <section class="card">
+        <h2 data-i18n="analysis_title">分析参数</h2>
+
+        <label class="field">
+          <span data-i18n="scope_label">范围</span>
+          <select id="scopeSelect"></select>
+        </label>
+
+        <label class="field checkbox">
+          <input id="includeExistingCheckbox" type="checkbox" />
+          <span data-i18n="include_existing">纳入已有分组</span>
+        </label>
+
+        <label class="field">
+          <span data-i18n="mode_label">分组模式</span>
+          <select id="groupingModeSelect"></select>
+        </label>
+
+        <label class="field">
+          <span data-i18n="template_label">模板</span>
+          <select id="templateSelect"></select>
+        </label>
+
+        <label class="field">
+          <span data-i18n="prompt_label">补充提示词</span>
+          <textarea id="userPromptInput" rows="2" maxlength="300" placeholder="例如：按项目优先，别分太细"></textarea>
+        </label>
+
+        <div class="actions">
+          <button id="analyzeBtn" class="primary" data-i18n="analyze_btn">开始分析</button>
+          <button id="undoBtn" data-i18n="undo_btn">撤销最近一次</button>
+        </div>
+      </section>
+
+      <section id="previewSection" class="card" hidden>
+        <h2 data-i18n="preview_title">预览与编辑</h2>
+
+        <div id="groupsEditor" class="groups-editor"></div>
+
+        <h3 data-i18n="tab_assignment_title">标签分配</h3>
+        <div id="tabsEditor" class="tabs-editor"></div>
+
+        <label id="crossWindowRow" class="field" hidden>
+          <span data-i18n="cross_window_label">跨窗口策略</span>
+          <select id="crossWindowSelect"></select>
+        </label>
+
+        <div class="actions">
+          <button id="applyBtn" class="primary" disabled data-i18n="apply_btn">应用分组</button>
+        </div>
+      </section>
+
+      <section class="card">
+        <h2 data-i18n="stats_title">统计</h2>
+        <div id="statsPanel" class="stats-panel"></div>
+      </section>
+
+      <section class="card">
+        <h2 data-i18n="settings_title">设置</h2>
+
+        <label class="field">
+          <span data-i18n="language_label">语言</span>
+          <select id="languageSelect"></select>
+        </label>
+
+        <label class="field">
+          <span data-i18n="privacy_label">隐私模式</span>
+          <select id="privacyModeSelect"></select>
+        </label>
+
+        <label class="field checkbox">
+          <input id="telemetryCheckbox" type="checkbox" />
+          <span data-i18n="telemetry_label">开启匿名统计</span>
+        </label>
+
+        <label class="field checkbox">
+          <input id="includeExistingDefaultCheckbox" type="checkbox" />
+          <span data-i18n="include_existing_default">默认纳入已有分组</span>
+        </label>
+
+        <label class="field">
+          <span id="modelLabel" data-i18n="model_label">模型</span>
+          <input id="modelInput" type="text" placeholder="MiniMax-M2.7" />
+        </label>
+
+        <label class="field">
+          <span id="apiKeyLabel" data-i18n="api_key_label">MiniMax Token Plan Key</span>
+          <input id="apiKeyInput" type="password" autocomplete="off" placeholder="sk-..." />
+        </label>
+
+        <div class="sub-card">
+          <h3 data-i18n="token_plan_title">Token Plan 额度</h3>
+          <div id="tokenPlanRemainsMeta" class="token-plan-meta">-</div>
+          <pre id="tokenPlanRemainsBody" class="token-plan-body">-</pre>
+          <div class="actions">
+            <button id="refreshRemainsBtn" data-i18n="refresh_remains_btn">刷新额度</button>
+          </div>
+        </div>
+
+        <div class="sub-card">
+          <h3 data-i18n="template_manage_title">模板管理</h3>
+          <label class="field">
+            <span data-i18n="template_name_label">模板名称</span>
+            <input id="templateNameInput" type="text" maxlength="30" />
+          </label>
+          <label class="field">
+            <span data-i18n="template_prompt_label">模板提示词</span>
+            <textarea id="templatePromptInput" rows="2" maxlength="300"></textarea>
+          </label>
+          <div class="actions">
+            <button id="addTemplateBtn" data-i18n="add_template_btn">新增模板</button>
+          </div>
+        </div>
+
+        <div class="actions">
+          <button id="saveSettingsBtn" data-i18n="save_settings_btn">保存设置</button>
+        </div>
+      </section>
+    </main>
+
+    <script type="module" src="popup.js"></script>
+  </body>
+</html>
