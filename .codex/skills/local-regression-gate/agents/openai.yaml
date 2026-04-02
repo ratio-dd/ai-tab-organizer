@@ -1,0 +1,4 @@
+interface:
+  display_name: "本地回归门禁"
+  short_description: "提测发版前强制执行本地回归并输出门禁结论与失败摘要"
+  default_prompt: "在准备让用户测试、让用户重载扩展或升级版本前，先执行本地回归脚本并输出 PASS/FAIL 与关键摘要；若失败先修复再允许测试。"
