@@ -21,6 +21,7 @@ const I18N = {
     include_existing_default: "默认纳入已有分组",
     model_label: "MiniMax 模型",
     api_key_label: "MiniMax Token Plan Key",
+    timeout_label: "请求超时(ms)",
     token_plan_title: "Token Plan 额度",
     refresh_remains_btn: "刷新额度",
     template_manage_title: "模板管理",
@@ -95,6 +96,7 @@ const I18N = {
     include_existing_default: "Include existing groups by default",
     model_label: "MiniMax model",
     api_key_label: "MiniMax Token Plan Key",
+    timeout_label: "Request timeout (ms)",
     token_plan_title: "Token Plan Remains",
     refresh_remains_btn: "Refresh remains",
     template_manage_title: "Template manager",
@@ -193,6 +195,7 @@ const el = {
   apiKeyLabel: document.getElementById("apiKeyLabel"),
   modelInput: document.getElementById("modelInput"),
   apiKeyInput: document.getElementById("apiKeyInput"),
+  analysisTimeoutInput: document.getElementById("analysisTimeoutInput"),
   tokenPlanRemainsMeta: document.getElementById("tokenPlanRemainsMeta"),
   tokenPlanRemainsBody: document.getElementById("tokenPlanRemainsBody"),
   refreshRemainsBtn: document.getElementById("refreshRemainsBtn"),
@@ -367,7 +370,11 @@ async function onSaveSettings() {
       includeExistingGroupsDefault: el.includeExistingDefaultCheckbox.checked,
       promptTemplates: state.settings.promptTemplates,
       minimaxModel: el.modelInput.value.trim(),
-      minimaxApiKey: el.apiKeyInput.value.trim()
+      minimaxApiKey: el.apiKeyInput.value.trim(),
+      analysisTimeoutMs: normalizeTimeoutInput(
+        el.analysisTimeoutInput.value,
+        state.settings.analysisTimeoutMs
+      )
     };
 
     const settings = await sendMessage({
@@ -621,6 +628,7 @@ function fillSettingsForm() {
   el.includeExistingDefaultCheckbox.checked = Boolean(
     state.settings.includeExistingGroupsDefault
   );
+  el.analysisTimeoutInput.value = String(state.settings.analysisTimeoutMs || 15000);
   updateMiniMaxFields();
 
   el.userPromptInput.placeholder = t("prompt_placeholder");
@@ -788,6 +796,15 @@ function formatTimestamp(ms) {
 
 function formatNumber(value) {
   return Number(value).toLocaleString(state.settings?.language === "en" ? "en-US" : "zh-CN");
+}
+
+function normalizeTimeoutInput(raw, fallback) {
+  const value = Number(raw);
+  const base = Number.isFinite(value) ? value : Number(fallback);
+  if (!Number.isFinite(base)) {
+    return 15000;
+  }
+  return Math.min(60000, Math.max(2000, Math.round(base)));
 }
 
 async function refreshStats() {

@@ -103,6 +103,18 @@
           <input id="apiKeyInput" type="password" autocomplete="off" placeholder="sk-..." />
         </label>
 
+        <label class="field">
+          <span data-i18n="timeout_label">请求超时(ms)</span>
+          <input
+            id="analysisTimeoutInput"
+            type="number"
+            min="2000"
+            max="60000"
+            step="1000"
+            placeholder="15000"
+          />
+        </label>
+
         <div class="sub-card">
           <h3 data-i18n="token_plan_title">Token Plan 额度</h3>
           <div id="tokenPlanRemainsMeta" class="token-plan-meta">-</div>

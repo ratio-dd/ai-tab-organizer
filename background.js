@@ -14,6 +14,9 @@ const LEGACY_PROVIDER_KEYS = [
   "kimiApiKey",
   "kimiModel"
 ];
+const MIN_TIMEOUT_MS = 2000;
+const DEFAULT_TIMEOUT_MS = 15000;
+const MAX_TIMEOUT_MS = 60000;
 
 const ALLOWED_COLORS = new Set([
   "grey",
@@ -42,7 +45,7 @@ const DEFAULT_SETTINGS = {
   includeExistingGroupsDefault: false,
   minimaxApiKey: "",
   minimaxModel: "MiniMax-M2.7",
-  analysisTimeoutMs: 8000
+  analysisTimeoutMs: DEFAULT_TIMEOUT_MS
 };
 
 const DEFAULT_STATS = {
@@ -452,6 +455,7 @@ async function requestGroupingFromMiniMax(candidates, options, settings) {
 
   const { systemPrompt, payload } = buildModelPromptPayload(candidates, options, settings);
 
+  const timeoutMs = getAnalyzeTimeoutMs(settings, candidates.length);
   const response = await fetchWithTimeout(
     "https://api.minimaxi.com/v1/chat/completions",
     {
@@ -469,7 +473,7 @@ async function requestGroupingFromMiniMax(candidates, options, settings) {
         ]
       })
     },
-    settings.analysisTimeoutMs || 8000
+    timeoutMs
   );
 
   if (!response.ok) {
@@ -531,6 +535,7 @@ async function getTokenPlanRemains(forceRefresh = false) {
     };
   }
 
+  const timeoutMs = resolveBaseTimeoutMs(settings);
   const response = await fetchWithTimeout(
     "https://www.minimaxi.com/v1/api/openplatform/coding_plan/remains",
     {
@@ -540,7 +545,7 @@ async function getTokenPlanRemains(forceRefresh = false) {
         Authorization: `Bearer ${token}`
       }
     },
-    settings.analysisTimeoutMs || 8000
+    timeoutMs
   );
 
   if (!response.ok) {
@@ -993,7 +998,10 @@ function normalizeColor(raw) {
 
 async function fetchWithTimeout(url, init, timeoutMs) {
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  const safeTimeoutMs = Number.isFinite(Number(timeoutMs))
+    ? Math.min(MAX_TIMEOUT_MS, Math.max(MIN_TIMEOUT_MS, Number(timeoutMs)))
+    : DEFAULT_TIMEOUT_MS;
+  const timer = setTimeout(() => controller.abort(), safeTimeoutMs);
 
   try {
     return await fetch(url, {
@@ -1002,7 +1010,10 @@ async function fetchWithTimeout(url, init, timeoutMs) {
     });
   } catch (error) {
     if (error.name === "AbortError") {
-      throw new AppError("AI_TIMEOUT", `AI 请求超时（>${timeoutMs}ms）`);
+      throw new AppError(
+        "AI_TIMEOUT",
+        `AI 请求超时（>${safeTimeoutMs}ms），可在设置中提高“请求超时(ms)”后重试。`
+      );
     }
     throw error;
   } finally {
@@ -1105,8 +1116,7 @@ function mergeSettings(input) {
   merged.minimaxApiKey = String(merged.minimaxApiKey || "").trim();
   merged.minimaxModel = String(merged.minimaxModel || DEFAULT_SETTINGS.minimaxModel).trim();
 
-  const timeout = Number(merged.analysisTimeoutMs);
-  merged.analysisTimeoutMs = Number.isFinite(timeout) && timeout >= 2000 ? timeout : 8000;
+  merged.analysisTimeoutMs = resolveBaseTimeoutMs(merged);
 
   merged.promptTemplates = normalizeTemplates(merged.promptTemplates);
 
@@ -1185,6 +1195,21 @@ function readFirstStringValue(source, keys) {
     }
   }
   return null;
+}
+
+function resolveBaseTimeoutMs(settings) {
+  const value = Number(settings?.analysisTimeoutMs);
+  if (!Number.isFinite(value)) {
+    return DEFAULT_TIMEOUT_MS;
+  }
+  return Math.min(MAX_TIMEOUT_MS, Math.max(MIN_TIMEOUT_MS, Math.round(value)));
+}
+
+function getAnalyzeTimeoutMs(settings, candidateCount) {
+  const base = resolveBaseTimeoutMs(settings);
+  const count = Number.isFinite(Number(candidateCount)) ? Number(candidateCount) : 0;
+  const dynamic = 6000 + Math.max(0, count) * 120;
+  return Math.min(MAX_TIMEOUT_MS, Math.max(base, dynamic));
 }
 
 function normalizeTemplates(templates) {
