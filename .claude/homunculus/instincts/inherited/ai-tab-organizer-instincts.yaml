@@ -1,0 +1,320 @@
+# Instincts generated from https://github.com/ratio-dd/ai-tab-organizer
+# Generated: 2026-04-03T07:02:11.337Z
+# Version: 2.0
+# NOTE: This file supplements (does not replace) any existing curated instincts.
+# High-confidence manually curated instincts should be preserved alongside these.
+
+---
+id: ai-tab-organizer-commit-conventional
+trigger: "when writing a commit message"
+confidence: 0.85
+domain: git
+source: repo-analysis
+source_repo: https://github.com/ratio-dd/ai-tab-organizer
+---
+
+# Ai Tab Organizer Commit Conventional
+
+## Action
+
+Use conventional commit format with prefixes: feat, docs, chore
+
+## Evidence
+
+- 3 commits analyzed
+- Detected conventional commit pattern
+- Examples: feat(ui): 支持按组预览与休眠包装页可选解包, docs(tab-organizer): 同步 0.2.0 分组交互与包装页策略
+
+---
+id: ai-tab-organizer-commit-length
+trigger: "when writing a commit message"
+confidence: 0.6
+domain: git
+source: repo-analysis
+source_repo: https://github.com/ratio-dd/ai-tab-organizer
+---
+
+# Ai Tab Organizer Commit Length
+
+## Action
+
+Keep commit messages concise (~38 characters)
+
+## Evidence
+
+- Average commit message length: 38 chars
+- Based on 3 commits
+
+---
+id: ai-tab-organizer-naming-files
+trigger: "when creating a new file"
+confidence: 0.8
+domain: code-style
+source: repo-analysis
+source_repo: https://github.com/ratio-dd/ai-tab-organizer
+---
+
+# Ai Tab Organizer Naming Files
+
+## Action
+
+Use camelCase naming convention
+
+## Evidence
+
+- Analyzed file naming patterns in repository
+- Dominant pattern: camelCase
+
+---
+id: ai-tab-organizer-import-relative
+trigger: "when importing modules"
+confidence: 0.75
+domain: code-style
+source: repo-analysis
+source_repo: https://github.com/ratio-dd/ai-tab-organizer
+---
+
+# Ai Tab Organizer Import Relative
+
+## Action
+
+Use relative imports for project files
+
+## Evidence
+
+- Import analysis shows relative import pattern
+- Example: import { x } from '../lib/x'
+
+---
+id: ai-tab-organizer-export-style
+trigger: "when exporting from a module"
+confidence: 0.7
+domain: code-style
+source: repo-analysis
+source_repo: https://github.com/ratio-dd/ai-tab-organizer
+---
+
+# Ai Tab Organizer Export Style
+
+## Action
+
+Prefer named exports
+
+## Evidence
+
+- Export pattern analysis
+- Dominant style: named
+
+---
+id: ai-tab-organizer-test-separate
+trigger: "when writing tests"
+confidence: 0.8
+domain: testing
+source: repo-analysis
+source_repo: https://github.com/ratio-dd/ai-tab-organizer
+---
+
+# Ai Tab Organizer Test Separate
+
+## Action
+
+Place tests in the tests/ or __tests__/ directory, mirroring src structure
+
+## Evidence
+
+- Separate test directory pattern detected
+- Tests live in dedicated test folders
+
+---
+id: ai-tab-organizer-instinct-file-naming
+trigger: "When creating a new file"
+confidence: 0.8
+domain: code-style
+source: repo-analysis
+source_repo: ratio-dd/ai-tab-organizer
+---
+
+# Ai Tab Organizer Instinct File Naming
+
+## Action
+
+Name the file using camelCase
+
+## Evidence
+
+- Pattern in namingConventions.files: camelCase
+
+---
+id: ai-tab-organizer-instinct-function-naming
+trigger: "When defining a new function"
+confidence: 0.8
+domain: code-style
+source: repo-analysis
+source_repo: ratio-dd/ai-tab-organizer
+---
+
+# Ai Tab Organizer Instinct Function Naming
+
+## Action
+
+Name the function using camelCase
+
+## Evidence
+
+- Pattern in namingConventions.functions: camelCase
+
+---
+id: ai-tab-organizer-instinct-class-naming
+trigger: "When defining a new class"
+confidence: 0.8
+domain: code-style
+source: repo-analysis
+source_repo: ratio-dd/ai-tab-organizer
+---
+
+# Ai Tab Organizer Instinct Class Naming
+
+## Action
+
+Name the class using PascalCase
+
+## Evidence
+
+- Pattern in namingConventions.classes: PascalCase
+
+---
+id: ai-tab-organizer-instinct-constant-naming
+trigger: "When declaring a constant"
+confidence: 0.8
+domain: code-style
+source: repo-analysis
+source_repo: ratio-dd/ai-tab-organizer
+---
+
+# Ai Tab Organizer Instinct Constant Naming
+
+## Action
+
+Name the constant using SCREAMING_SNAKE_CASE
+
+## Evidence
+
+- Pattern in namingConventions.constants: SCREAMING_SNAKE_CASE
+
+---
+id: ai-tab-organizer-instinct-import-style
+trigger: "When importing modules"
+confidence: 0.8
+domain: code-style
+source: repo-analysis
+source_repo: ratio-dd/ai-tab-organizer
+---
+
+# Ai Tab Organizer Instinct Import Style
+
+## Action
+
+Use relative import paths
+
+## Evidence
+
+- Pattern in importStyle: relative
+
+---
+id: ai-tab-organizer-instinct-export-style
+trigger: "When exporting functions or variables"
+confidence: 0.8
+domain: code-style
+source: repo-analysis
+source_repo: ratio-dd/ai-tab-organizer
+---
+
+# Ai Tab Organizer Instinct Export Style
+
+## Action
+
+Use named exports
+
+## Evidence
+
+- Pattern in exportStyle: named
+
+---
+id: ai-tab-organizer-instinct-error-handling
+trigger: "When handling errors in code"
+confidence: 0.7
+domain: code-style
+source: repo-analysis
+source_repo: ratio-dd/ai-tab-organizer
+---
+
+# Ai Tab Organizer Instinct Error Handling
+
+## Action
+
+Wrap error-prone code in try-catch blocks and use custom error classes
+
+## Evidence
+
+- Pattern in errorHandling.style: try-catch
+- Pattern in errorHandling.customErrorClasses: true
+
+---
+id: ai-tab-organizer-instinct-commit-format
+trigger: "When making a git commit"
+confidence: 0.9
+domain: git
+source: repo-analysis
+source_repo: ratio-dd/ai-tab-organizer
+---
+
+# Ai Tab Organizer Instinct Commit Format
+
+## Action
+
+Format the commit message as <type>(<scope>): <description> using one of: feat, docs, chore
+
+## Evidence
+
+- Seen in commit: feat(ui): 支持按组预览与休眠包装页可选解包
+- Seen in commit: docs(tab-organizer): 同步 0.2.0 分组交互与包装页策略
+- Seen in commit: chore(release): bump extension version to 0.2.0
+
+---
+id: ai-tab-organizer-instinct-commit-length
+trigger: "When writing a commit message"
+confidence: 0.6
+domain: git
+source: repo-analysis
+source_repo: ratio-dd/ai-tab-organizer
+---
+
+# Ai Tab Organizer Instinct Commit Length
+
+## Action
+
+Keep the commit message concise, around 38 characters on average
+
+## Evidence
+
+- Pattern in commits.averageLength: 38
+
+---
+id: ai-tab-organizer-instinct-test-location
+trigger: "When adding or updating tests"
+confidence: 0.7
+domain: testing
+source: repo-analysis
+source_repo: ratio-dd/ai-tab-organizer
+---
+
+# Ai Tab Organizer Instinct Test Location
+
+## Action
+
+Place test files in a separate folder from source code
+
+## Evidence
+
+- Pattern in architecture.folderStructure.testLocation: separate
+
