@@ -6,6 +6,14 @@ const I18N = {
     include_existing: "纳入已有分组",
     include_wrapped_tabs: "纳入休眠包装页（解包并按原标签移动）",
     mode_label: "分组模式",
+    granularity_label: "分组粒度",
+    granularity_coarse: "宽泛（更少分组）",
+    granularity_medium: "平衡",
+    granularity_fine: "精细（更多分组）",
+    naming_granularity_label: "命名粒度",
+    naming_granularity_broad: "宽泛命名（更易合并）",
+    naming_granularity_balanced: "平衡命名",
+    naming_granularity_specific: "具体命名（区分更细）",
     template_label: "模板",
     prompt_label: "补充提示词",
     analyze_btn: "开始分析",
@@ -87,6 +95,14 @@ const I18N = {
     include_existing: "Include existing groups",
     include_wrapped_tabs: "Include suspended wrapper tabs (unwrap and keep original tab move)",
     mode_label: "Grouping mode",
+    granularity_label: "Granularity",
+    granularity_coarse: "Coarse (fewer groups)",
+    granularity_medium: "Balanced",
+    granularity_fine: "Fine (more groups)",
+    naming_granularity_label: "Naming granularity",
+    naming_granularity_broad: "Broad naming (merge-friendly)",
+    naming_granularity_balanced: "Balanced naming",
+    naming_granularity_specific: "Specific naming (more detailed)",
     template_label: "Template",
     prompt_label: "Extra prompt",
     analyze_btn: "Analyze",
@@ -189,6 +205,8 @@ const el = {
   includeExistingCheckbox: document.getElementById("includeExistingCheckbox"),
   includeWrappedTabsCheckbox: document.getElementById("includeWrappedTabsCheckbox"),
   groupingModeSelect: document.getElementById("groupingModeSelect"),
+  granularitySelect: document.getElementById("granularitySelect"),
+  namingGranularitySelect: document.getElementById("namingGranularitySelect"),
   templateSelect: document.getElementById("templateSelect"),
   userPromptInput: document.getElementById("userPromptInput"),
   analyzeBtn: document.getElementById("analyzeBtn"),
@@ -279,6 +297,8 @@ async function onAnalyze() {
       includeExistingGroups: el.includeExistingCheckbox.checked,
       includeSuspendedWrappedTabs: el.includeWrappedTabsCheckbox.checked,
       groupingMode: el.groupingModeSelect.value,
+      granularity: el.granularitySelect.value,
+      namingGranularity: el.namingGranularitySelect.value,
       userPrompt: el.userPromptInput.value.trim(),
       templateId: el.templateSelect.value || ""
     };
@@ -381,6 +401,8 @@ async function onSaveSettings() {
       privacyMode: el.privacyModeSelect.value,
       telemetryEnabled: el.telemetryCheckbox.checked,
       includeExistingGroupsDefault: el.includeExistingDefaultCheckbox.checked,
+      granularity: el.granularitySelect.value,
+      namingGranularity: el.namingGranularitySelect.value,
       promptTemplates: state.settings.promptTemplates,
       minimaxModel: el.modelInput.value.trim(),
       minimaxApiKey: el.apiKeyInput.value.trim(),
@@ -743,6 +765,8 @@ function syncControlsWithDefaults() {
     state.settings.includeExistingGroupsDefault
   );
   el.includeWrappedTabsCheckbox.checked = false;
+  el.granularitySelect.value = state.settings.granularity || "medium";
+  el.namingGranularitySelect.value = state.settings.namingGranularity || "balanced";
   renderCrossWindowStrategyVisibility();
 }
 
@@ -771,6 +795,18 @@ function renderStaticOptions() {
   el.groupingModeSelect.innerHTML = `
     <option value="hybrid">${escapeHtml(t("mode_hybrid"))}</option>
     <option value="domain_first">${escapeHtml(t("mode_domain"))}</option>
+  `;
+
+  el.granularitySelect.innerHTML = `
+    <option value="coarse">${escapeHtml(t("granularity_coarse"))}</option>
+    <option value="medium">${escapeHtml(t("granularity_medium"))}</option>
+    <option value="fine">${escapeHtml(t("granularity_fine"))}</option>
+  `;
+
+  el.namingGranularitySelect.innerHTML = `
+    <option value="broad">${escapeHtml(t("naming_granularity_broad"))}</option>
+    <option value="balanced">${escapeHtml(t("naming_granularity_balanced"))}</option>
+    <option value="specific">${escapeHtml(t("naming_granularity_specific"))}</option>
   `;
 
   el.crossWindowSelect.innerHTML = `

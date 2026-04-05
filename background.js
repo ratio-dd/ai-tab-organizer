@@ -56,6 +56,7 @@ const DEFAULT_SETTINGS = {
     { id: "reading", name: "阅读清单", prompt: "请按阅读主题分组，并把低相关项放入未分组。" }
   ],
   granularity: "medium",
+  namingGranularity: "balanced",
   colorPolicy: "ai_auto",
   includeExistingGroupsDefault: false,
   minimaxApiKey: "",
@@ -497,20 +498,30 @@ function buildModelPromptPayload(candidates, options, settings) {
   );
 
   const templateText = findTemplatePrompt(settings.promptTemplates, options.templateId);
-  const userPrompt = [templateText, options.userPrompt || ""].filter(Boolean).join("\n");
+  const strategyGuidance = [
+    buildGranularityGuidance(options.granularity),
+    buildNamingGuidance(options.namingGranularity)
+  ]
+    .filter(Boolean)
+    .join("\n");
+  const userPrompt = [strategyGuidance, templateText, options.userPrompt || ""]
+    .filter(Boolean)
+    .join("\n");
 
   const systemPrompt = [
     "你是标签页整理助手，目标是帮助用户更快找回标签。",
     "必须只输出 JSON 对象，不允许输出任何解释性文字。",
     "输出格式必须是 {\"groups\":[...],\"ungrouped\":[...]}。",
     "groups[].tabIds 必须严格使用输入 tabs 中已有的 tabId，禁止使用索引、标题、URL 代替。",
-    "每个 tabId 只能出现一次，不确定时请放入 ungrouped。"
+    "每个 tabId 只能出现一次，不确定时请放入 ungrouped。",
+    "请同时遵循 granularity 与 namingGranularity，控制分组粗细和组名宽泛度。"
   ].join("\n");
 
   const payload = {
     goal: "group_tabs_for_fast_retrieval",
     groupingMode: options.groupingMode,
-    granularity: settings.granularity,
+    granularity: options.granularity,
+    namingGranularity: options.namingGranularity,
     guidance: userPrompt,
     tabs: sanitizedCandidates.map((tab) => ({
       tabId: tab.tabId,
@@ -1277,7 +1288,8 @@ async function createAndUpdateGroup(tabIds, windowId, name, color) {
 
   await chrome.tabGroups.update(groupId, {
     title: name,
-    color: normalizeColor(color)
+    color: normalizeColor(color),
+    collapsed: true
   });
 }
 
@@ -1385,10 +1397,38 @@ function findTemplatePrompt(templates, templateId) {
   return found?.prompt || "";
 }
 
+function buildGranularityGuidance(granularity) {
+  if (granularity === "coarse") {
+    return "分组粒度要求：宽泛。尽量减少组数量，优先合并相近主题。";
+  }
+  if (granularity === "fine") {
+    return "分组粒度要求：精细。允许更多分组，按任务与意图细分。";
+  }
+  return "分组粒度要求：平衡。在可读性和组数量之间取中。";
+}
+
+function buildNamingGuidance(namingGranularity) {
+  if (namingGranularity === "broad") {
+    return "组名风格：宽泛命名。使用上位概念，避免过于具体的短期词。";
+  }
+  if (namingGranularity === "specific") {
+    return "组名风格：具体命名。可包含更细任务上下文，便于精确识别。";
+  }
+  return "组名风格：平衡命名。简洁且有辨识度。";
+}
+
 function normalizeRunOptions(options, settings) {
   const scope = options.scope === "all_windows" ? "all_windows" : "current_window";
   const groupingMode =
     options.groupingMode === "domain_first" ? "domain_first" : "hybrid";
+  const granularity =
+    options.granularity === "coarse" || options.granularity === "fine"
+      ? options.granularity
+      : settings.granularity;
+  const namingGranularity =
+    options.namingGranularity === "broad" || options.namingGranularity === "specific"
+      ? options.namingGranularity
+      : settings.namingGranularity;
 
   return {
     scope,
@@ -1398,6 +1438,8 @@ function normalizeRunOptions(options, settings) {
         : Boolean(settings.includeExistingGroupsDefault),
     includeSuspendedWrappedTabs: Boolean(options.includeSuspendedWrappedTabs),
     groupingMode,
+    granularity,
+    namingGranularity,
     userPrompt: String(options.userPrompt || "").slice(0, 300),
     templateId: options.templateId ? String(options.templateId) : ""
   };
@@ -1555,6 +1597,10 @@ function mergeSettings(input) {
     merged.granularity === "coarse" || merged.granularity === "fine"
       ? merged.granularity
       : "medium";
+  merged.namingGranularity =
+    merged.namingGranularity === "broad" || merged.namingGranularity === "specific"
+      ? merged.namingGranularity
+      : "balanced";
   merged.colorPolicy =
     merged.colorPolicy === "domain_palette" ? "domain_palette" : "ai_auto";
   merged.includeExistingGroupsDefault = Boolean(merged.includeExistingGroupsDefault);
